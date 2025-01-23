@@ -171,7 +171,7 @@ void GameManager::Message(std::string msg) {
 void GameManager::InfoMessage(const char* infoMsg) {
 
 	/* \f1 Makes the message blue. 
-	*  \t Terminates the previously applied color.
+	*  \f Terminates the previously applied color.
 	*/
 	std::string msg = "\f1INFO: \ff";
 
@@ -191,7 +191,7 @@ void GameManager::InfoMessage(std::string infoMsg) {
 void GameManager::ErrorMessage(const char* errorMsg) {
 
 	/* \f3 Makes the message red.
-	*  \t Terminates the previously applied color.
+	*  \f Terminates the previously applied color.
 	*/
 	std::string msg = "\f3ERROR: \ff";
 
