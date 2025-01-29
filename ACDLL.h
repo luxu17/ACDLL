@@ -5,6 +5,8 @@
 #include <format>
 #include <thread>
 #include <map>
+#include <memory>
+#include <type_traits>
 
 /*
 *
@@ -31,20 +33,31 @@ struct Gun {
 */
 struct Entity {
 
-	byte padding_1[0xEC];
+	byte padding_1[0x76];
+
+								// 0x28 -> coordinates
+
+	/* Puts player into non-playable state.
+	*  Does not appear to "kill" them per se.
+	*/
+	char dead;					// 0x76 -> dead
+
+	byte padding_2[0x75];
 
 	/* Health. */
-	int health;
+	int health;					// 0xEC -> health
 
-	byte padding_2[0x115];
+	byte padding_3[0x115];
 
 	/* Name. */
-	char name[0x18];
+	char name[0x18];			// 0x205 -> name
 
-	byte padding_3[0x147];
+	byte padding_4[0x147];
 
-	/* Currently equipped gun. */
-	Gun* gun;
+								// 0x318 -> ghost
+
+	/* Current gun. */
+	Gun* gun;					// 0x364 -> gun
 
 };
 
@@ -74,9 +87,8 @@ public:
 	void ShowMenu();
 
 	/* Return the value of an alias in AssaultCubes scripting engine. */
-	char* GetAliasValue(unsigned char* alias);
-
-	char* GetAliasValue(std::string alias);
+	template<typename T1>
+	char* GetAliasValue(T1 alias);
 
 	/* Getter: Returns a reference to the players health. */
 	int& GetPlayerHealth();
@@ -99,7 +111,7 @@ public:
 
 	void ErrorMessage(std::string errorMsg);
 
-private:
+protected:
 
 	/* Passess a command to the games internal scripting system. */
 	typedef unsigned int(*cmdProcessorType)(
@@ -136,6 +148,12 @@ private:
 	/* Various offsets that can be accessed via name. */
 	std::map<std::string, uintptr_t> gm_offsets;
 
+	/* Temporary values for reference initialization. */
+	int gm_intTemp = 0;
+
+	template<typename T1, typename T2>
+	void Shell(T1 command, T2 arguments);
+
 	/* This runs the CubeScript necessary to generate the ACDLL menu. */
 	void LoadACDLLMenu();
 
@@ -145,7 +163,85 @@ private:
 	/* Retrieves a reference to the players gun. */
 	Gun* GetPlayerGun();
 
-	/* Temporary values for reference initialization. */
-	int gm_intTemp = 0;
+	class NPCManager {
+
+	public:
+
+		NPCManager(GameManager& GM);
+
+		~NPCManager() = default;
+
+		void LoadNPCManagerMenu();
+		void ShowNPCManagerMenu();
+
+		void DepleteAmmo(char* name);
+		void DepleteAmmo(std::string name);
+		void DepleteAllAmmo();
+
+		void DepleteHealth(char* name);
+		void DepleteHealth(std::string name);
+		void DepleteAllHealth();
+
+		GameManager& gm;
+
+	protected:
+
+		int GetNPCCount();
+
+		Entity** GetPlayers();
+
+		int& nm_playerCount;
+
+		std::map<std::string, uintptr_t> nm_offsets;
+
+	private:
+
+		Entity** nm_players;
+
+		int nm_intTemp = 0;
+
+	};
+
+	std::unique_ptr<NPCManager> gm_npcManager;
 
 };
+
+template<typename T1>
+char* GameManager::GetAliasValue(T1 alias) {
+
+	/* The AssaultCube function aliasLookup is expecting an unsigned char**.
+	*  Needed to add a second variable to make sure it's dereferenced correctly.
+	*/
+	unsigned char* aliasNamePtr = nullptr;
+
+	if constexpr (std::is_same_v<T1, char*> || std::is_same_v<T1, unsigned char*> || std::is_same_v<T1, const char*> || std::is_same_v<T1, const unsigned char*> || std::is_same_v<T1, char const*>)
+	{
+
+		aliasNamePtr = reinterpret_cast<unsigned char*>(const_cast<char*>(reinterpret_cast<const char*>(alias)));
+
+	}
+	else if constexpr (std::is_same_v<T1, std::string>) {
+
+		aliasNamePtr = alias.c_str();
+	}
+	else {
+
+		this->ErrorMessage("Invalid datatype passed to GameManager::GetAliasValue");
+
+		return nullptr;
+
+	}
+
+	uintptr_t aliasMetadata = this->gm_aliasLookup(&aliasNamePtr);
+
+	/* If the function returns 0 then it means that alias isn't in the hash table. */
+	if (aliasMetadata != 0) {
+
+		/* TODO: Add this offset to gm_offsets. */
+		char* aliasValue = *reinterpret_cast<char**>(aliasMetadata + 0x1C);
+
+		return aliasValue;
+	}
+
+	return nullptr;
+}
